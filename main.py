@@ -1,33 +1,61 @@
 import os
 from fastapi import FastAPI, Request
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, MessageHandler, CommandHandler, ContextTypes, filters
 from dotenv import load_dotenv
+import openai
 import uvicorn
 
-# Load .env file
+# Load environment variables
 load_dotenv()
 
-# Get token from environment
-TOKEN = os.getenv("BOT_TOKEN")
+# Get tokens
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+
+# OpenAI client
+client = openai.OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY"),  # Храни API ключ в Render как OPENAI_API_KEY
+    base_url="https://api.intelligence.io.solutions/api/v1/",
+)
 
 # FastAPI app
 app = FastAPI()
 
 # Telegram bot application
-application = Application.builder().token(TOKEN).build()
+application = Application.builder().token(BOT_TOKEN).build()
 
-# Handlers
+# === AI логика ===
+async def ask_ai(question: str) -> str:
+    try:
+        response = client.chat.completions.create(
+            model="deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": question},
+            ],
+            temperature=0.7,
+            stream=False,
+            max_completion_tokens=100
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+# === Handlers ===
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"Hello {update.effective_user.first_name}!")
+    await update.message.reply_text("Hello! Send me any question, and I will try to answer using AI 🤖")
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Available commands:\n/start\n/help")
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_text = update.message.text
+    reply = await ask_ai(user_text)
+    await update.message.reply_text(reply)
 
+# Add handlers
 application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("help", help_command))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# Start bot on startup
+# Run on startup
 @app.on_event("startup")
 async def startup():
     await application.initialize()
@@ -38,15 +66,15 @@ async def shutdown():
     await application.stop()
     await application.shutdown()
 
-# Webhook endpoint
+# Webhook
 @app.post("/webhook")
-async def handle_webhook(request: Request):
+async def webhook(request: Request):
     data = await request.json()
     update = Update.de_json(data, application.bot)
     await application.process_update(update)
     return {"ok": True}
 
-# Health check
+# Health
 @app.get("/")
 def root():
     return {"status": "ok"}
