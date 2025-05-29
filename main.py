@@ -1,61 +1,55 @@
 import os
 from fastapi import FastAPI, Request
 from telegram import Update
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    ContextTypes
-)
-import uvicorn
+from telegram.ext import Application, CommandHandler, ContextTypes
 from dotenv import load_dotenv
+import uvicorn
 
-# Load environment variables
+# Load .env file
 load_dotenv()
 
-# Create FastAPI app
-app = FastAPI()
-
-# Get bot token
+# Get token from environment
 TOKEN = os.getenv("BOT_TOKEN")
 
-# Initialize Telegram bot application
+# FastAPI app
+app = FastAPI()
+
+# Telegram bot application
 application = Application.builder().token(TOKEN).build()
 
-# === Handlers ===
+# Handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    await update.message.reply_text(f"Hi {user.first_name}! Welcome to the bot 🤖")
+    await update.message.reply_text(f"Hello {update.effective_user.first_name}!")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Available commands:\n/start - Start the bot\n/help - Show help")
+    await update.message.reply_text("Available commands:\n/start\n/help")
 
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("help", help_command))
 
-# === Critical: run Telegram bot in background ===
+# Start bot on startup
 @app.on_event("startup")
-async def on_startup():
+async def startup():
     await application.initialize()
-    await application.start()  # <== this runs the bot in background
+    await application.start()
 
 @app.on_event("shutdown")
-async def on_shutdown():
+async def shutdown():
     await application.stop()
     await application.shutdown()
 
-# === Webhook endpoint ===
+# Webhook endpoint
 @app.post("/webhook")
-async def webhook(request: Request):
+async def handle_webhook(request: Request):
     data = await request.json()
     update = Update.de_json(data, application.bot)
     await application.process_update(update)
     return {"ok": True}
 
-# === Health check ===
+# Health check
 @app.get("/")
 def root():
     return {"status": "ok"}
 
-# Local run
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000)
