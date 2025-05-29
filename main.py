@@ -18,33 +18,32 @@ app = FastAPI()
 # Get bot token
 TOKEN = os.getenv("BOT_TOKEN")
 
-# Create Telegram application
+# Initialize Telegram bot application
 application = Application.builder().token(TOKEN).build()
 
 # === Handlers ===
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await update.message.reply_text(f"Hi {user.first_name}! Welcome to the bot 🤖")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Available commands:\n/start - Start the bot\n/help - Show this help message")
+    await update.message.reply_text("Available commands:\n/start - Start the bot\n/help - Show help")
 
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("help", help_command))
 
-# === Webhook integration ===
-
+# === Critical: run Telegram bot in background ===
 @app.on_event("startup")
 async def on_startup():
     await application.initialize()
-    await application.start()
+    await application.start()  # <== this runs the bot in background
 
 @app.on_event("shutdown")
 async def on_shutdown():
     await application.stop()
     await application.shutdown()
 
+# === Webhook endpoint ===
 @app.post("/webhook")
 async def webhook(request: Request):
     data = await request.json()
@@ -52,7 +51,7 @@ async def webhook(request: Request):
     await application.process_update(update)
     return {"ok": True}
 
-# Health check
+# === Health check ===
 @app.get("/")
 def root():
     return {"status": "ok"}
