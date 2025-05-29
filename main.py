@@ -35,7 +35,7 @@ application = Application.builder().token(BOT_TOKEN).build()
 async def ask_ai(question: str) -> str:
     try:
         response = client.chat.completions.create(
-            model="meta-llama/Llama-3.2-90B-Vision-Instruct",
+            model="microsoft/Phi-3.5-mini-instruct",
             messages=[
                 {
                     "role": "system",
