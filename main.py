@@ -1,7 +1,13 @@
 import os
 from fastapi import FastAPI, Request
 from telegram import Update
-from telegram.ext import Application, MessageHandler, CommandHandler, ContextTypes, filters
+from telegram.ext import (
+    Application,
+    MessageHandler,
+    CommandHandler,
+    ContextTypes,
+    filters
+)
 from dotenv import load_dotenv
 import openai
 import uvicorn
@@ -9,53 +15,61 @@ import uvicorn
 # Load environment variables
 load_dotenv()
 
-# Get tokens
+# Tokens
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# OpenAI client
+# OpenAI client (DeepSeek or compatible)
 client = openai.OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),  # Храни API ключ в Render как OPENAI_API_KEY
+    api_key=OPENAI_API_KEY,
     base_url="https://api.intelligence.io.solutions/api/v1/",
 )
 
 # FastAPI app
 app = FastAPI()
 
-# Telegram bot application
+# Telegram bot
 application = Application.builder().token(BOT_TOKEN).build()
 
-# === AI логика ===
+# === AI Logic ===
 async def ask_ai(question: str) -> str:
     try:
         response = client.chat.completions.create(
-            model="deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+            model="meta-llama/Llama-3.2-90B-Vision-Instruct",
             messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a direct and concise assistant. "
+                        "Always answer briefly and factually. "
+                        "Do not explain your reasoning or thoughts. "
+                        "Never say 'I think' or 'maybe'. Just answer clearly."
+                    ),
+                },
                 {"role": "user", "content": question},
             ],
-            temperature=0.7,
+            temperature=0.3,
             stream=False,
             max_completion_tokens=100
         )
-        return response.choices[0].message.content
+        return response.choices[0].message.content.strip()
     except Exception as e:
-        return f"Error: {str(e)}"
+        return f"Ошибка: {str(e)}"
 
 # === Handlers ===
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Hello! Send me any question, and I will try to answer using AI 🤖")
+    await update.message.reply_text("Привет! Задай мне вопрос, и я постараюсь ответить кратко и чётко 🤖")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     reply = await ask_ai(user_text)
     await update.message.reply_text(reply)
 
-# Add handlers
+# === Register Handlers ===
 application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# Run on startup
+# === Startup / Shutdown ===
 @app.on_event("startup")
 async def startup():
     await application.initialize()
@@ -66,18 +80,19 @@ async def shutdown():
     await application.stop()
     await application.shutdown()
 
-# Webhook
+# === Webhook ===
 @app.post("/webhook")
-async def webhook(request: Request):
+async def telegram_webhook(request: Request):
     data = await request.json()
     update = Update.de_json(data, application.bot)
     await application.process_update(update)
     return {"ok": True}
 
-# Health
+# === Health check ===
 @app.get("/")
 def root():
     return {"status": "ok"}
 
+# === Local run ===
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000)
