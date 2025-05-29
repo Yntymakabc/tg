@@ -9,32 +9,42 @@ from telegram.ext import (
 import uvicorn
 from dotenv import load_dotenv
 
-# Load environment variables (only needed for local development)
+# Load environment variables
 load_dotenv()
 
-# Initialize FastAPI app
+# Create FastAPI app
 app = FastAPI()
 
-# Get your bot token from environment
+# Get bot token
 TOKEN = os.getenv("BOT_TOKEN")
 
-# Initialize Telegram application
+# Create Telegram application
 application = Application.builder().token(TOKEN).build()
 
-# Command: /start
+# === Handlers ===
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await update.message.reply_text(f"Hi {user.first_name}! Welcome to the bot 🤖")
 
-# Command: /help
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Available commands:\n/start - Start the bot\n/help - Show this help message")
 
-# Add handlers
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("help", help_command))
 
-# FastAPI webhook endpoint
+# === Webhook integration ===
+
+@app.on_event("startup")
+async def on_startup():
+    await application.initialize()
+    await application.start()
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    await application.stop()
+    await application.shutdown()
+
 @app.post("/webhook")
 async def webhook(request: Request):
     data = await request.json()
@@ -42,11 +52,11 @@ async def webhook(request: Request):
     await application.process_update(update)
     return {"ok": True}
 
-# Health check route
+# Health check
 @app.get("/")
 def root():
     return {"status": "ok"}
 
-# Run locally
+# Local run
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000)
